@@ -1,0 +1,172 @@
+-- Cmm representations using Hoopl's Graph CmmNode e x.
+{-# LANGUAGE GADTs #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
+
+{-# OPTIONS -fno-warn-tabs #-}
+-- The above warning supression flag is a temporary kludge.
+-- While working on this module you are encouraged to remove it and
+-- detab the module (please do the detabbing in a separate patch). See
+--     http://hackage.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
+-- for details
+
+{-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
+#if __GLASGOW_HASKELL__ >= 703
+-- GHC 7.0.1 improved incomplete pattern warnings with GADTs
+{-# OPTIONS_GHC -fwarn-incomplete-patterns #-}
+#endif
+
+module Cmm (
+     -- * Cmm top-level datatypes
+     CmmProgram, CmmGroup, GenCmmGroup,
+     CmmDecl, GenCmmDecl(..),
+     CmmGraph, GenCmmGraph(..),
+     CmmBlock,
+     Section(..), CmmStatics(..), CmmStatic(..),
+
+     -- * Cmm graphs
+     CmmReplGraph, GenCmmReplGraph, CmmFwdRewrite, CmmBwdRewrite,
+   
+     -- * Info Tables
+     CmmTopInfo(..), CmmStackInfo(..), CmmInfoTable(..),
+     ClosureTypeInfo(..), 
+     C_SRT(..), needsSRT,
+     ProfilingInfo(..), ConstrDescription, 
+
+     -- * Statements, expressions and types
+     module CmmNode,
+     module CmmExpr,
+  ) where
+
+import CLabel
+import BlockId
+import CmmNode
+import OptimizationFuel as F
+import SMRep
+import CmmExpr
+import Compiler.Hoopl
+
+import Data.Word        ( Word8 )
+
+#include "HsVersions.h"
+
+-----------------------------------------------------------------------------
+--  Cmm, GenCmm
+-----------------------------------------------------------------------------
+
+-- A CmmProgram is a list of CmmGroups  
+-- A CmmGroup is a list of top-level declarations  
+
+-- When object-splitting is on,each group is compiled into a separate
+-- .o file. So typically we put closely related stuff in a CmmGroup.
+
+type CmmProgram = [CmmGroup]
+
+type GenCmmGroup d h g = [GenCmmDecl d h g]
+type CmmGroup = GenCmmGroup CmmStatics CmmTopInfo CmmGraph
+
+-----------------------------------------------------------------------------
+--  CmmDecl, GenCmmDecl
+-----------------------------------------------------------------------------
+
+-- GenCmmDecl is abstracted over
+--   d, the type of static data elements in CmmData
+--   h, the static info preceding the code of a CmmProc
+--   g, the control-flow graph of a CmmProc
+--
+-- We expect there to be two main instances of this type:
+--   (a) C--, i.e. populated with various C-- constructs
+--       (Cmm and RawCmm in OldCmm.hs)
+--   (b) Native code, populated with data/instructions
+--
+-- A second family of instances based on Hoopl is in Cmm.hs.
+
+-- | A top-level chunk, abstracted over the type of the contents of
+-- the basic blocks (Cmm or instructions are the likely instantiations).
+data GenCmmDecl d h g
+  = CmmProc     -- A procedure
+     h                 -- Extra header such as the info table
+     CLabel            -- Entry label
+     g                 -- Control-flow graph for the procedure's code
+
+  | CmmData     -- Static data
+        Section
+        d
+
+type CmmDecl = GenCmmDecl CmmStatics CmmTopInfo CmmGraph
+
+-----------------------------------------------------------------------------
+--     Graphs
+-----------------------------------------------------------------------------
+
+type CmmGraph = GenCmmGraph CmmNode
+data GenCmmGraph n = CmmGraph { g_entry :: BlockId, g_graph :: Graph n C C }
+type CmmBlock = Block CmmNode C C
+
+type CmmReplGraph e x = GenCmmReplGraph CmmNode e x
+type GenCmmReplGraph n e x = FuelUniqSM (Maybe (Graph n e x))
+type CmmFwdRewrite f = FwdRewrite FuelUniqSM CmmNode f
+type CmmBwdRewrite f = BwdRewrite FuelUniqSM CmmNode f
+
+-----------------------------------------------------------------------------
+--     Info Tables
+-----------------------------------------------------------------------------
+
+data CmmTopInfo   = TopInfo {info_tbl :: CmmInfoTable, stack_info :: CmmStackInfo}
+
+data CmmStackInfo
+   = StackInfo {
+       arg_space :: ByteOff,            -- XXX: comment?
+       updfr_space :: Maybe ByteOff     -- XXX: comment?
+   }
+
+-- | Info table as a haskell data type
+data CmmInfoTable
+  = CmmInfoTable {
+      cit_lbl  :: CLabel, -- Info table label
+      cit_rep  :: SMRep,
+      cit_prof :: ProfilingInfo,
+      cit_srt  :: C_SRT
+    }
+  | CmmNonInfoTable   -- Procedure doesn't need an info table
+
+data ProfilingInfo
+  = NoProfilingInfo
+  | ProfilingInfo [Word8] [Word8] -- closure_type, closure_desc
+
+-- C_SRT is what StgSyn.SRT gets translated to... 
+-- we add a label for the table, and expect only the 'offset/length' form
+
+data C_SRT = NoC_SRT
+	   | C_SRT !CLabel !WordOff !StgHalfWord {-bitmap or escape-}
+           deriving (Eq)
+
+needsSRT :: C_SRT -> Bool
+needsSRT NoC_SRT       = False
+needsSRT (C_SRT _ _ _) = True
+
+-----------------------------------------------------------------------------
+--              Static Data
+-----------------------------------------------------------------------------
+
+data Section
+  = Text
+  | Data
+  | ReadOnlyData
+  | RelocatableReadOnlyData
+  | UninitialisedData
+  | ReadOnlyData16      -- .rodata.cst16 on x86_64, 16-byte aligned
+  | OtherSection String
+
+data CmmStatic
+  = CmmStaticLit CmmLit
+        -- a literal value, size given by cmmLitRep of the literal.
+  | CmmUninitialised Int
+        -- uninitialised data, N bytes long
+  | CmmString [Word8]
+        -- string of 8-bit values only, not zero terminated.
+
+data CmmStatics
+   = Statics
+       CLabel      -- Label of statics
+       [CmmStatic] -- The static data itself
+

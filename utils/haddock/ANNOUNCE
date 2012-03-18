@@ -1,0 +1,71 @@
+--------------------------------------------
+-- Haddock 2.9.3
+--------------------------------------------
+
+A new version of Haddock, the Haskell documentation tool, is out!
+
+This is the version that comes with GHC 7.2.1 (although that executable claims
+it is version 2.9.2!)
+
+Apologies to people who have sent in patches that haven't made it into this
+release, they will go into the next one.
+
+--------------------------------------------
+-- Changes in version 2.9.3
+--------------------------------------------
+
+Changes in version 2.9.3
+
+  * Build with GHC 7.2.1
+
+  * Support blank lines in results of examples
+
+  * A type signatures for multiple names generates one signature in the output
+
+  * Minor bug fixes
+
+--------------------------------------------
+-- Links
+--------------------------------------------
+
+Homepage:
+ http://www.haskell.org/haddock
+
+Hackage page:
+ http://hackage.haskell.org/package/haddock-2.9.0
+
+Bugtracker and wiki:
+ http://trac.haskell.org/haddock
+
+Mailing list:
+ haddock@projects.haskell.org
+
+Code repository:
+ http://code.haskell.org/haddock
+
+--------------------------------------------
+-- Contributors
+--------------------------------------------
+
+The following people contributed patches to this release:
+
+Max Bolingbroke
+Ian Lynagh
+Simon Hengel
+Jose Pedro Magalhaes
+Simon Peyton Jones
+Michal Terepeta
+David Waern
+
+--------------------------------------------
+-- Get Involved
+--------------------------------------------
+
+We would be very happy to get more contributors. To get involved, start by
+grabbing the code:
+
+ http://code.haskell.org/haddock
+
+Then take a look at the bug and feature tracker for things to work on:
+
+ http://trac.haskell.org/haddock
